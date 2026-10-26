@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Chat Test</title>
+</head>
+
+<body>
+    <h2>Live Chat Support</h2>
+
+    <input id="roomId" type="number" value="1" placeholder="Room ID">
+    <br><br>
+    <input id="token" type="text" placeholder="Paste your login token">
+    <button onclick="connect()">Connect</button>
+
+    <br><br>
+
+    <input id="message" type="text" placeholder="Enter message">
+    <button onclick="sendMessage()">Send</button>
+
+    <h3>Messages</h3>
+    <div id="messages"></div>
+
+    <script>
+
+        let socket;
+
+        async function connect() {
+            const roomId = document.getElementById("roomId").value;
+            const token = document.getElementById("token").value.trim();
+
+            if (!roomId || !token) {
+                addMessage("Please enter Room ID and login token!");
+                return;
+            }
+
+            // Load old messages from the database
+            try {
+                const response = await fetch(
+                    `http://127.0.0.1:8000/chat/rooms/${roomId}/messages`,
+                    {
+                        headers: {
+                            "Authorization": `Bearer ${token}`
+                        }
+                    }
+                );
+
+                if (!response.ok) {
+                    addMessage("Could not load chat history. Check token and room access.");
+                    return;
+                }
+
+                const messages = await response.json();
+
+                document.getElementById("messages").innerHTML = "";
+
+                messages.forEach(function (msg) {
+                    addMessage(`User ${msg.sender_id}: ${msg.content}`);
+                });
+
+            } catch (error) {
+                addMessage("Error loading chat history!");
+                return;
+            }
+
+            // Connect to WebSocket
+            socket = new WebSocket(
+                `ws://127.0.0.1:8000/chat/ws/${roomId}?token=${encodeURIComponent(token)}`
+            );
+
+            socket.onopen = function () {
+                addMessage("Connected to chat!");
+            };
+
+            socket.onmessage = function (event) {
+                addMessage("Received: " + event.data);
+            };
+
+            socket.onerror = function () {
+                addMessage("Connection error!");
+            };
+
+            socket.onclose = function () {
+                addMessage("Disconnected. Check your token and room access.");
+            };
+        }
+
+        function sendMessage() {
+            const input = document.getElementById("message");
+            const content = input.value.trim();
+
+            if (!content) {
+                return;
+            }
+
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(content);
+                input.value = "";
+            } else {
+                addMessage("Please connect first!");
+            }
+        }
+
+        function addMessage(message) {
+            const div = document.createElement("div");
+            div.textContent = message;
+            document.getElementById("messages").appendChild(div);
+        }
+
+    </script>
+</body>
+
+</html>
