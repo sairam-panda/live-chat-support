@@ -18,7 +18,13 @@ class Message(Base):
     sender_id = Column(
         Integer,
         ForeignKey("users.id"),
-        nullable=False
+        nullable=True
+    )
+
+    sender_type = Column(
+        String(20),
+        nullable=False,
+        default="customer"
     )
 
     content = Column(String, nullable=False)
