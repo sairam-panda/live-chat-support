@@ -1,4 +1,3 @@
-
 from app.database import test_connection
 
 try:

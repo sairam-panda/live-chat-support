@@ -1,21 +1,101 @@
+
 <!DOCTYPE html>
 <html lang="en">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live Chat Test</title>
+    <title>Live Chat Support</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 700px;
+            margin: 30px auto;
+            padding: 20px;
+            background: #f4f7fb;
+        }
+
+        h2 {
+            text-align: center;
+        }
+
+        input {
+            padding: 10px;
+            margin: 5px 0;
+            box-sizing: border-box;
+        }
+
+        #roomId, #token {
+            width: 100%;
+        }
+
+        #message {
+            width: 75%;
+        }
+
+        button {
+            padding: 10px 16px;
+            cursor: pointer;
+        }
+
+        #messages {
+            margin-top: 20px;
+            padding: 15px;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            min-height: 200px;
+        }
+
+        .message {
+            margin: 12px 0;
+            padding: 12px;
+            border-radius: 10px;
+            overflow-wrap: anywhere;
+        }
+
+        .customer {
+            background: #dcecff;
+        }
+
+        .ai {
+            background: #e1f7e8;
+        }
+
+        .agent {
+            background: #fff0d6;
+        }
+
+        .system {
+            color: #555;
+            font-size: 13px;
+            margin: 8px 0;
+        }
+
+        .sender {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .content {
+            white-space: pre-wrap;
+        }
+    </style>
 </head>
 
 <body>
     <h2>Live Chat Support</h2>
 
+    <label for="roomId">Room ID</label>
     <input id="roomId" type="number" value="1" placeholder="Room ID">
-    <br><br>
-    <input id="token" type="text" placeholder="Paste your login token">
-    <button onclick="connect()">Connect</button>
 
-    <br><br>
+    <label for="token">Access Token</label>
+    <input id="token" type="password" placeholder="Paste your login token">
+
+    <button id="connectButton" onclick="connect()">Connect</button>
+
+    <hr>
 
     <input id="message" type="text" placeholder="Enter message">
     <button onclick="sendMessage()">Send</button>
@@ -24,22 +104,33 @@
     <div id="messages"></div>
 
     <script>
-
         let socket;
+        let connecting = false;
+
+        const messagesDiv = document.getElementById("messages");
 
         async function connect() {
-            const roomId = document.getElementById("roomId").value;
-            const token = document.getElementById("token").value.trim();
-
-            if (!roomId || !token) {
-                addMessage("Please enter Room ID and login token!");
+            if (connecting || (socket && socket.readyState === WebSocket.OPEN)) {
+                addSystemMessage("Already connected or connecting.");
                 return;
             }
 
-            // Load old messages from the database
+            const roomId = document.getElementById("roomId").value.trim();
+            const token = document.getElementById("token").value.trim();
+
+            if (!roomId || !token) {
+                addSystemMessage("Please enter Room ID and access token.");
+                return;
+            }
+
+            connecting = true;
+            document.getElementById("connectButton").disabled = true;
+            messagesDiv.replaceChildren();
+
             try {
+                // Load chat history
                 const response = await fetch(
-                    `http://127.0.0.1:8000/chat/rooms/${roomId}/messages`,
+                    `http://127.0.0.1:8000/chat/rooms/${encodeURIComponent(roomId)}/messages`,
                     {
                         headers: {
                             "Authorization": `Bearer ${token}`
@@ -48,43 +139,90 @@
                 );
 
                 if (!response.ok) {
-                    addMessage("Could not load chat history. Check token and room access.");
+                    addSystemMessage(
+                        "Could not load chat history. Check token and room access."
+                    );
                     return;
                 }
 
-                const messages = await response.json();
+                const history = await response.json();
 
-                document.getElementById("messages").innerHTML = "";
-
-                messages.forEach(function (msg) {
-                    addMessage(`User ${msg.sender_id}: ${msg.content}`);
+                history.forEach(function (msg) {
+                    displayMessage(msg);
                 });
 
+                // Connect WebSocket
+                socket = new WebSocket(
+                    `ws://127.0.0.1:8000/chat/ws/${encodeURIComponent(roomId)}?token=${encodeURIComponent(token)}`
+                );
+
+                socket.onopen = function () {
+                    addSystemMessage("Connected to chat!");
+                };
+
+                socket.onmessage = function (event) {
+                    try {
+                        const msg = JSON.parse(event.data);
+                        displayMessage(msg);
+                    } catch (error) {
+                        addSystemMessage("Received an unrecognized message.");
+                    }
+                };
+
+                socket.onerror = function () {
+                    addSystemMessage("Connection error. Check the server terminal.");
+                };
+
+                socket.onclose = function () {
+                    addSystemMessage("Disconnected from chat.");
+                    connecting = false;
+                    document.getElementById("connectButton").disabled = false;
+                };
+
             } catch (error) {
-                addMessage("Error loading chat history!");
-                return;
+                addSystemMessage("Error connecting. Is the FastAPI server running?");
+            } finally {
+                connecting = false;
+                document.getElementById("connectButton").disabled = false;
+            }
+        }
+
+        function displayMessage(msg) {
+            const div = document.createElement("div");
+            const sender = document.createElement("div");
+            const content = document.createElement("div");
+
+            const type = msg.sender_type || "customer";
+
+            div.className = "message";
+
+            if (type === "ai") {
+                div.classList.add("ai");
+                sender.textContent = "AI Assistant";
+            } else if (type === "agent") {
+                div.classList.add("agent");
+                sender.textContent = "Support Agent";
+            } else {
+                div.classList.add("customer");
+                sender.textContent = "Customer";
             }
 
-            // Connect to WebSocket
-            socket = new WebSocket(
-                `ws://127.0.0.1:8000/chat/ws/${roomId}?token=${encodeURIComponent(token)}`
-            );
+            content.className = "content";
+            content.textContent = msg.content || "";
 
-            socket.onopen = function () {
-                addMessage("Connected to chat!");
-            };
+            sender.className = "sender";
+            div.appendChild(sender);
+            div.appendChild(content);
+            messagesDiv.appendChild(div);
 
-            socket.onmessage = function (event) {
-                addMessage("Received: " + event.data);
-            };
+            div.scrollIntoView({ behavior: "smooth", block: "end" });
+        }
 
-            socket.onerror = function () {
-                addMessage("Connection error!");
-            };
-
-            socket.onclose = function () {
-                addMessage("Disconnected. Check your token and room access.");
-            };
+        function addSystemMessage(message) {
+            const div = document.createElement("div");
+            div.className = "system";
+            div.textContent = message;
+            messagesDiv.appendChild(div);
         }
 
         function sendMessage() {
@@ -99,16 +237,15 @@
                 socket.send(content);
                 input.value = "";
             } else {
-                addMessage("Please connect first!");
+                addSystemMessage("Please connect first!");
             }
-        }
+        }6
 
-        function addMessage(message) {
-            const div = document.createElement("div");
-            div.textContent = message;
-            document.getElementById("messages").appendChild(div);
-        }
-
+        document.getElementById("message").addEventListener("keydown", function (event) {
+            if (event.key === "Enter") {
+                sendMessage();
+            }
+        });
     </script>
 </body>
 
