@@ -7,6 +7,8 @@ from app.models.chat_room import ChatRoom
 from app.models.message import Message
 from app.routers.chat import router as chat_router
 from fastapi.middleware.cors import CORSMiddleware
+from app.routers.admin import router as admin_router
+
 
 Base.metadata.create_all(bind=engine)
 
@@ -22,6 +24,7 @@ app.add_middleware(
 app.include_router(user_router)
 app.include_router(auth_router)
 app.include_router(chat_router)
+app.include_router(admin_router)
 
 
 @app.get("/")
